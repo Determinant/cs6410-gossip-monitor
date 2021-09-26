@@ -1,4 +1,6 @@
 #!/bin/bash
+# 0. npm install
+#
 # 1. Before running this script, run `node ./server.js` and then type
 # "+127.0.0.1:5555\n" in the server console to add the netcat
 # emulated peer (without quotation marks).
