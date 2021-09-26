@@ -17,6 +17,8 @@ const tcpPort = 2333;
 const tcpAddress = '0.0.0.0';
 const defaultDigit = 0;
 const retryDelay = 1000;
+const readChunkSize = 4096;
+const tableMaxBytes = 65536;
 var myDigit = defaultDigit;
 
 const stdout = process.stdout;
@@ -62,30 +64,41 @@ const idToIP = id => `${id[0]}.${id[1]}.${id[2]}.${id[3]}`;
 const idToPort = id => `${id.readUint16BE(4, 2)}`;
 const idToStr = id => `${idToIP(id)}:${idToPort(id)}`;
 
-const addPeer = (ip, port) => {
-    const id = toID(ip, port);
-    const newConn = new PromiseSocket(net.connect(idToPort(id), idToIP(id)));
-    if (!peerMap.has(id)) {
-        const peer = {
+const touchPeer = id => {
+    let peer = peerMap.get(id);
+    if (!peer) {
+        peer = {
+            lastAlleged: new Date(0),
+            lastCSV: [],
             digit: defaultDigit,
-            conn: newConn()
         };
-        const errRetry = () => {
-            peer.conn.on('error', () => {
-                stderr.write(`E: failed to connect ${idToStr(id)}\n`);
-                peer.conn = null;
-                setTimeout(() => {
-                    peer.conn = newConn();
-                    errRetry();
-                }, retryDelay);
-            });
-        };
-        errRetry();
         peerMap.set(id, peer);
-        stderr.write(`added ${ip}:${port} (${id.toString('hex')})\n`);
     }
+    return peer;
 };
 
+const addPeer = (ip, port) => {
+    const id = toID(ip, port);
+    const newConn = () => new PromiseSocket(net.connect(idToPort(id), idToIP(id)));
+    const peer = touchPeer(id);
+    peer.conn = newConn();
+    peer.retry = () => setTimeout(() => {
+        peer.conn = newConn();
+        errRetry();
+    }, retryDelay);
+
+    const errRetry = () => {
+        peer.conn.read(0).catch((e) => {
+            stderr.write(`E: failed to connect ${idToStr(id)} (${e})\n`);
+            peer.conn = null;
+            peer.retry();
+        });
+    };
+    errRetry();
+    stderr.write(`added ${ip}:${port} (${id.toString('hex')})\n`);
+};
+
+const csvLine = /([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+):([0-9]+),([0-9]+),([0-9])/;
 const addIP = /\+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+):([0-9]+)/;
 const setDigit = /([0-9])/;
 const cmdParser = line => {
@@ -106,7 +119,7 @@ const cmdParser = line => {
             console.log(`${tcpAddress}:${tcpPort} --> ${myDigit}`);
         } else if (line == '?') {
             peerMap.forEach((v, k, _) => {
-                stdout.write(`${idToStr(k)} --> ${v}\n`);
+                stdout.write(`${idToStr(k)} --> ${v.digit}\n`);
             });
         }
     }
@@ -117,15 +130,57 @@ const getRandomKey = (pm) => {
     return keys[Math.floor(Math.random() * keys.length)];
 }
 
-const pullPeer = () => {
-    const peer = peerMap[getRandomKey(peerMap)];
-    if (peer.conn) {
-        try {
-            // how?
-            await peer.conn.write('hello');
-            await peer.conn.read();
-        } catch (_) {}
+const delay = (t, v) => new Promise((resolve) => {
+    setTimeout(resolve.bind(null, v), t);
+});
+
+const pullPeer = async () => {
+    if (peerMap.size > 0) {
+        const id = getRandomKey(peerMap);
+        const peer = peerMap.get(id);
+        if (peer.conn) {
+            stderr.write(`pulling ${idToStr(id)}\n`);
+            try {
+                let all = Buffer.alloc(0);
+                while (true) {
+                    const chunk = await peer.conn.read(readChunkSize);
+                    if (!chunk) break;
+                    all = Buffer.concat([all, chunk]);
+                    if (all.length > tableMaxBytes) {
+                        stderr.write(`data from ${idToStr(id)} is too long\n`);
+                        await peer.conn.end();
+                        throw 0;
+                    }
+                }
+                const lines = all.toString().split('\n');
+                let parsed = [];
+                lines.forEach(raw => {
+                    const m = raw.match(csvLine);
+                    if (m) {
+                        parsed.push({
+                            id: toID(m[1], m[2]),
+                            timestamp: new Date(parseInt(m[3], 10)),
+                            digit: parseInt(m[4]),
+                        });
+                    }
+                });
+                parsed.forEach(info => {
+                    const p = touchPeer(info.id);
+                    if (info.timestamp > p.lastAlleged) {
+                        p.lastAlleged = info.timestamp;
+                        p.digit = info.digit;
+                    }
+                });
+                peer.lastCSV = parsed;
+            } catch (_) {
+            } finally {
+                peer.conn = null;
+                peer.retry();
+            }
+        }
     }
+    await delay(3000);
+    pullPeer();
 };
 
 process.stdin.on('data', function(chunk) {
@@ -136,3 +191,5 @@ var tcpServer = net.createServer(function(conn) {
     console.log(`${conn.localAddress}:${conn.localPort} tried to connect`);
 });
 tcpServer.listen(tcpPort, tcpAddress);
+
+pullPeer();
