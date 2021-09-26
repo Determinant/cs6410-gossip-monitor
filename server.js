@@ -43,15 +43,6 @@ app.use(session({
     }),
 }));
 
-app.get('/state', (req, res) => {
-    res.send("hello world");
-});
-
-
-app.listen(webPort, () => {
-    console.log(`listening at localhost:${webPort}`);
-})
-
 let peerMap = new Map();
 
 const toID = (ip, port) => {
@@ -65,14 +56,16 @@ const idToPort = id => `${id.readUint16BE(4, 2)}`;
 const idToStr = id => `${idToIP(id)}:${idToPort(id)}`;
 
 const touchPeer = id => {
-    let peer = peerMap.get(id);
+    const key = idToStr(id);
+    let peer = peerMap.get(key);
     if (!peer) {
         peer = {
+            id,
             lastAlleged: new Date(0),
-            lastCSV: [],
+            csv: {},
             digit: defaultDigit,
         };
-        peerMap.set(id, peer);
+        peerMap.set(key, peer);
     }
     return peer;
 };
@@ -119,7 +112,7 @@ const cmdParser = line => {
             console.log(`${tcpAddress}:${tcpPort} --> ${myDigit}`);
         } else if (line == '?') {
             peerMap.forEach((v, k, _) => {
-                stdout.write(`${idToStr(k)} --> ${v.digit}\n`);
+                stdout.write(`${k} --> ${v.digit}\n`);
             });
         }
     }
@@ -136,10 +129,10 @@ const delay = (t, v) => new Promise((resolve) => {
 
 const pullPeer = async () => {
     if (peerMap.size > 0) {
-        const id = getRandomKey(peerMap);
-        const peer = peerMap.get(id);
+        const key = getRandomKey(peerMap);
+        const peer = peerMap.get(key);
         if (peer.conn) {
-            stderr.write(`pulling ${idToStr(id)}\n`);
+            stderr.write(`pulling ${key}\n`);
             try {
                 let all = Buffer.alloc(0);
                 while (true) {
@@ -147,31 +140,31 @@ const pullPeer = async () => {
                     if (!chunk) break;
                     all = Buffer.concat([all, chunk]);
                     if (all.length > tableMaxBytes) {
-                        stderr.write(`data from ${idToStr(id)} is too long\n`);
+                        stderr.write(`data from ${key} is too long\n`);
                         await peer.conn.end();
                         throw 0;
                     }
                 }
                 const lines = all.toString().split('\n');
-                let parsed = [];
                 lines.forEach(raw => {
                     const m = raw.match(csvLine);
                     if (m) {
-                        parsed.push({
-                            id: toID(m[1], m[2]),
+                        const id = toID(m[1], m[2]);
+                        const socket = idToStr(id);
+                        const info = {
+                            id,
+                            socket,
                             timestamp: new Date(parseInt(m[3], 10)),
                             digit: parseInt(m[4]),
-                        });
+                        };
+                        peer.csv[socket] = info;
+                        const p = touchPeer(id);
+                        if (info.timestamp > p.lastAlleged) {
+                            p.lastAlleged = info.timestamp;
+                            p.digit = info.digit;
+                        }
                     }
                 });
-                parsed.forEach(info => {
-                    const p = touchPeer(info.id);
-                    if (info.timestamp > p.lastAlleged) {
-                        p.lastAlleged = info.timestamp;
-                        p.digit = info.digit;
-                    }
-                });
-                peer.lastCSV = parsed;
             } catch (_) {
             } finally {
                 peer.conn = null;
@@ -189,7 +182,24 @@ process.stdin.on('data', function(chunk) {
 
 var tcpServer = net.createServer(function(conn) {
     console.log(`${conn.localAddress}:${conn.localPort} tried to connect`);
+    conn.end();
 });
 tcpServer.listen(tcpPort, tcpAddress);
 
 pullPeer();
+
+app.use(express.static('public'));
+
+app.get('/state', (req, res) => {
+    let data = {};
+    peerMap.forEach((v, k) => {
+        data[k] = v;
+    });
+    res.send(data);
+});
+
+
+app.listen(webPort, () => {
+    console.log(`listening at localhost:${webPort}`);
+})
+

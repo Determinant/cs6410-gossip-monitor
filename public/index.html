@@ -1,0 +1,68 @@
+<html>
+  <body>
+    <div id="graph"></div>
+    <style>
+      th.host {
+        text-align: right;
+      }
+    </style>
+    <script>
+      function refreshGraph() {
+        fetch('/state',{
+          method: 'GET',
+        }).then(response => response.json())
+          .then(s => {
+            var hosts = new Set();
+            Object.entries(s).forEach(n => {
+              hosts.add(n[0]);
+              Object.entries(n[1].csv).forEach(e => {
+                hosts.add(e[0]);
+              });
+            });
+            hosts = Array.from(hosts);
+            var table = document.createElement('table');
+            var container = document.getElementById('graph');
+            container.innerHTML = "";
+            container.appendChild(table);
+            var hrow = document.createElement('tr');
+            hrow.appendChild(document.createElement('th'));
+            for (var j = 0; j < hosts.length; j++) {
+              var th = document.createElement('th');
+              th.innerHTML = hosts[j];
+              hrow.appendChild(th);
+            }
+            table.appendChild(hrow);
+            for (var i = 0; i < hosts.length; i++) {
+              var hostA = hosts[i];
+              var row = document.createElement('tr');
+              table.appendChild(row);
+              var th = document.createElement('th');
+              th.classList = 'host';
+              th.innerHTML = hostA;
+              row.appendChild(th);
+              for (var j = 0; j < hosts.length; j++) {
+                var hostB = hosts[j];
+                var info = null;
+                var cell = document.createElement('td');
+                if (s[hostA]) {
+                  var e = s[hostA].csv[hostB];
+                  if (e) {
+                    info = e;
+                  }
+                }
+                if (info) {
+                  cell.innerHTML = '<div class="cell">' + info.digit + "</div>";
+                } else {
+                  cell.innerHTML = '<div class="cell">' + "n/a</div>";
+                }
+                row.appendChild(cell);
+              }
+            }
+            console.log("refreshed");
+            setTimeout(refreshGraph, 3000);
+          });
+      }
+      refreshGraph();
+    </script>
+  </body>
+</html>
