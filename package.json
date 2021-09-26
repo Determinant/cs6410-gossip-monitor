@@ -1,0 +1,23 @@
+{
+  "dependencies": {
+    "axios": "^0.21.1",
+    "axios-cookiejar-support": "^1.0.1",
+    "body-parser": "^1.19.0",
+    "express": "^4.17.1",
+    "express-session": "^1.17.1",
+    "express-session-sqlite": "^2.0.8",
+    "googleapis": "^39.2.0",
+    "ip": "^1.1.5",
+    "jsdom": "^16.5.3",
+    "moment": "^2.29.1",
+    "moment-timezone": "^0.5.33",
+    "passport": "^0.4.1",
+    "passport-google-oauth": "^2.0.0",
+    "passport-local": "^1.0.0",
+    "promise-socket": "^7.0.0",
+    "rfc4122": "^1.0.6",
+    "sqlite3": "^5.0.2",
+    "tough-cookie": "^4.0.0",
+    "uuid": "^3.4.0"
+  }
+}
