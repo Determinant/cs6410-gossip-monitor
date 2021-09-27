@@ -188,7 +188,6 @@ const pullRandomPeers = async () => {
 const pullAllPeers = async () => {
     const keys = peerMap.keys();
     let pms = [];
-    console
     for (const k of keys) {
         const peer = peerMap.get(k);
         pms.push(pullPeer(peer));
