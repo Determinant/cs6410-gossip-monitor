@@ -18,7 +18,7 @@ const tcpAddress = '0.0.0.0';
 const defaultDigit = 0;
 const retryDelay = 1000; // 1s
 const pullInterval = 1000; // 1s
-const readTimeout = 3000; // 3s
+const readTimeout = 10000; // 10s
 const readChunkSize = 4096;
 const tableMaxBytes = 65536;
 var myDigit = defaultDigit;
@@ -30,8 +30,7 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(session({
     genid: (req) => {
-        console.log(req.sessionID);
-        return uuid()
+        return uuid();
     },
     secret: 'secret',
     resave: false,
@@ -72,46 +71,45 @@ const touchPeer = id => {
     return peer;
 };
 
-const addPeer = (ip, port) => {
+const addPeer = async (ip, port) => {
     const id = toID(ip, port);
-    const newConn = () => new PromiseSocket(net.connect(idToPort(id), idToIP(id)));
-    const peer = touchPeer(id);
-    peer.conn = newConn();
-    peer.retry = () => setTimeout(() => {
-        peer.conn = newConn();
-        errRetry();
-    }, retryDelay);
-
-    const errRetry = () => {
-        peer.conn.read(0).catch((e) => {
-            stderr.write(`E: failed to connect ${idToStr(id)} (${e})\n`);
+    const newConn = async () => {
+        const c = new PromiseSocket();
+        c.connect(idToPort(id), idToIP(id)).catch(async (e) => {
             peer.conn = null;
-            peer.retry();
+            stderr.write(`E: failed to connect ${idToStr(id)} (${e})\n`);
+            await peer.retry();
         });
+        return c;
     };
-    errRetry();
+    const peer = touchPeer(id);
+    peer.conn = await newConn();
+    peer.retry = async () => {
+        await delay(retryDelay);
+        peer.conn = await newConn();
+    };
     stderr.write(`added ${ip}:${port} (${id.toString('hex')})\n`);
 };
 
 const csvLine = /([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+):([0-9]+),([0-9]+),([0-9])/;
 const addIP = /\+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+):([0-9]+)/;
 const setDigit = /([0-9])/;
-const cmdParser = line => {
+const cmdParser = async line => {
     line = line.trim();
     let m = line.match(addIP);
     if (m) {
         const ip = m[1];
         const port = parseInt(m[2]);
         if (port == NaN || port >= 65536) {
-            console.log("E: invalid port format");
+            stderr.write("E: invalid port format\n");
             return;
         }
-        addPeer(ip, port);
+        await addPeer(ip, port);
     } else {
         m = line.match(setDigit);
         if (m) {
             myDigit = parseInt(m[1]);
-            console.log(`${tcpAddress}:${tcpPort} --> ${myDigit}`);
+            stdout.write(`${tcpAddress}:${tcpPort} --> ${myDigit}\n`);
         } else if (line == '?') {
             peerMap.forEach((v, k, _) => {
                 stdout.write(`${k} --> ${v.digit}\n`);
@@ -131,7 +129,8 @@ const delay = (t, v) => new Promise((resolve) => {
 
 const pullPeer = async peer => {
     if (peer.conn) {
-        stderr.write(`pulling ${idToStr(peer.id)}\n`);
+        const k = idToStr(peer.id);
+        stderr.write(`pulling ${k}\n`);
         try {
             let all = Buffer.alloc(0);
             peer.conn.setTimeout(readTimeout);
@@ -140,9 +139,7 @@ const pullPeer = async peer => {
                 if (!chunk) break;
                 all = Buffer.concat([all, chunk]);
                 if (all.length > tableMaxBytes) {
-                    stderr.write(`data from ${key} is too long\n`);
-                    await peer.conn.end();
-                    throw 0;
+                    throw `data from ${k} is too long`;
                 }
             }
             peer.conn.setTimeout(0);
@@ -166,16 +163,19 @@ const pullPeer = async peer => {
                     }
                 }
             });
-        } catch (_) {
+            await peer.conn.end();
+        } catch (e) {
+            stderr.write(`E: ${k} (${e})\n`);
         } finally {
             peer.conn = null;
-            peer.retry();
+            await peer.retry();
         }
     }
 };
 
 
 const pullRandomPeers = async () => {
+    stderr.write("pulling all peers");
     if (peerMap.size > 0) {
         const key = getRandomKey(peerMap);
         const peer = peerMap.get(key);
@@ -190,21 +190,20 @@ const pullAllPeers = async () => {
     let pms = [];
     console
     for (const k of keys) {
-        console.log(k);
         const peer = peerMap.get(k);
         pms.push(pullPeer(peer));
     }
-    Promise.all(pms);
+    await Promise.all(pms);
     await delay(pullInterval);
     pullAllPeers();
 };
 
-process.stdin.pipe(require('split')()).on('data', chunk => {
-    cmdParser(chunk.toString());
+process.stdin.pipe(require('split')()).on('data', async chunk => {
+    await cmdParser(chunk.toString());
 });
 
 var tcpServer = net.createServer(function(conn) {
-    console.log(`${conn.localAddress}:${conn.localPort} tried to connect`);
+    stderr.write(`${conn.localAddress}:${conn.localPort} tried to connect\n`);
     conn.end();
 });
 tcpServer.listen(tcpPort, tcpAddress);
@@ -257,6 +256,6 @@ app.get('/state', (req, res) => {
 
 
 app.listen(webPort, () => {
-    console.log(`listening at localhost:${webPort}`);
+    stderr.write(`listening at localhost:${webPort}\n`);
 })
 
