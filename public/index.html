@@ -3,13 +3,24 @@
     <title>Gossip Monitor</title>
     <style>
       th.host {
+        padding-right: 5px;
         text-align: right;
       }
+      .hrow th {
+        font-size: 8px;
+      }
       #graph table {
-        padding: 5px;
+        border: solid 1px;
+        border-spacing: 1px;
+        padding: 1px;
+      }
+      #graph td, th {
+        padding: 0px;
       }
       #graph table td {
-        text-align: center;
+      }
+      #graph table div {
+        padding: 10px 5px 10px 5px;
       }
       
       #graph table div.c1 {
@@ -85,6 +96,7 @@
             container.innerHTML = "";
             container.appendChild(table);
             var hrow = document.createElement('tr');
+            hrow.classList = 'hrow';
             hrow.appendChild(document.createElement('th'));
             for (var j = 0; j < hosts.length; j++) {
               var th = document.createElement('th');
