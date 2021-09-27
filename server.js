@@ -18,6 +18,7 @@ const tcpAddress = '0.0.0.0';
 const defaultDigit = 0;
 const retryDelay = 1000; // 1s
 const pullInterval = 3000; // 3s
+const readTimeout = 2000; // 2s
 const readChunkSize = 4096;
 const tableMaxBytes = 65536;
 var myDigit = defaultDigit;
@@ -133,6 +134,7 @@ const pullPeer = async peer => {
         stderr.write(`pulling ${idToStr(peer.id)}\n`);
         try {
             let all = Buffer.alloc(0);
+            peer.conn.setTimeout(readTimeout);
             while (true) {
                 const chunk = await peer.conn.read(readChunkSize);
                 if (!chunk) break;
@@ -143,6 +145,7 @@ const pullPeer = async peer => {
                     throw 0;
                 }
             }
+            peer.conn.setTimeout(0);
             const lines = all.toString().split('\n');
             lines.forEach(raw => {
                 const m = raw.match(csvLine);
@@ -184,12 +187,14 @@ const pullRandomPeers = async () => {
 
 const pullAllPeers = async () => {
     const keys = peerMap.keys();
+    let pms = [];
     console
     for (const k of keys) {
         console.log(k);
         const peer = peerMap.get(k);
-        await pullPeer(peer);
+        pms.push(pullPeer(peer));
     }
+    Promise.all(pms);
     await delay(pullInterval);
     pullAllPeers();
 };
