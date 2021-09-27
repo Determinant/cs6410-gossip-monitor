@@ -1,11 +1,70 @@
 <html>
-  <body>
-    <div id="graph"></div>
+  <head>
+    <title>Gossip Monitor</title>
     <style>
       th.host {
         text-align: right;
       }
+      #graph table {
+        padding: 5px;
+      }
+      #graph table td {
+        text-align: center;
+      }
+      
+      #graph table div.c1 {
+        background: #f44336;
+        color: #ffcdd2;
+      }
+
+      #graph table div.c2 {
+        background: #e91e63;
+        color: #f8bbd0;
+      }
+
+      #graph table div.c3 {
+        background: #9c27b0;
+        color: #e1bee7;
+      }
+
+      #graph table div.c4 {
+        background: #3f51b5;
+        color: #c5cae9;
+      }
+
+      #graph table div.c5 {
+        background: #00bcd4;
+        color: #b2ebf2;
+      }
+
+      #graph table div.c6 {
+        background: #009688;
+        color: #b2dfdb;
+      }
+
+      #graph table div.c7 {
+        background: #4caf50;
+        color: #c8e6c9;
+      }
+
+      #graph table div.c8 {
+        background: #cddc39;
+        color: #f0f4c3;
+      }
+
+      #graph table div.c9 {
+        background: #ff9800;
+        color: #ffe0b2;
+      }
+
+      #graph table div.c0 {
+        background: #ff5722;
+        color: #ffccbc;
+      }
     </style>
+  </head>
+  <body>
+    <div id="graph"></div>
     <script>
       function refreshGraph() {
         fetch('/state',{
@@ -51,7 +110,7 @@
                   }
                 }
                 if (info) {
-                  cell.innerHTML = '<div class="cell">' + info.digit + "</div>";
+                  cell.innerHTML = '<div class="cell c' + info.digit + '">' + info.digit + "(" + info.timestamp + ")" + "</div>";
                 } else {
                   cell.innerHTML = '<div class="cell">' + "n/a</div>";
                 }

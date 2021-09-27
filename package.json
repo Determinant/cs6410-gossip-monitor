@@ -8,6 +8,7 @@
     "moment": "^2.29.1",
     "moment-timezone": "^0.5.33",
     "promise-socket": "^7.0.0",
+    "split": "^1.0.1",
     "sqlite3": "^5.0.2",
     "tough-cookie": "^4.0.0"
   }
